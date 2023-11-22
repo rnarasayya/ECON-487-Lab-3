@@ -1,0 +1,127 @@
+---
+title: "ECON 487 Lab 3"
+author: "Rohan Narasayya"
+date: "2023-10-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+set.seed(487)
+oj <- read.csv("oj.csv")
+summary(oj$HHLARGE)
+summary(oj$EDUC)
+lmImportant_Features_Demo = lm(logmove~log(price) + brand + feat + log(price):feat + brand:feat + brand:log(price) + EDUC + INCOME + HHLARGE + WORKWOM + store + week, data = oj)
+summary(lmImportant_Features_Demo)
+coef(lmImportant_Features_Demo)["HHLARGE"]
+summary(oj$HHLARGE)["3rd Qu."]
+```
+
+The new logmove = logmove(median) + coefficient * (3rd Qu - Median).
+
+```{r}
+logmove_HH <- summary(oj$logmove)["Median"] + (coef(lmImportant_Features_Demo)["HHLARGE"]) * (summary(oj$HHLARGE)["3rd Qu."] - summary(oj$HHLARGE)["Median"])
+logmove_HH
+log_HH_change <- logmove_HH - summary(oj$logmove)["Median"]
+log_HH_change
+
+logmove_EDUC <- summary(oj$logmove)["Median"] + (coef(lmImportant_Features_Demo)["EDUC"]) * (summary(oj$EDUC)["3rd Qu."] - summary(oj$EDUC)["Median"])
+logmove_EDUC
+log_EDUC_change <- logmove_EDUC - summary(oj$logmove)["Median"]
+log_EDUC_change
+
+```
+
+HHLARGE is the more important predictor of demand because it log change has a larger absolute value of 0.07636571 where EDUC's log change has a smaller value at 0.06453366.
+
+```{r}
+lmImportant_Features_Demo2 = lm(logmove~log(price) + brand + feat + log(price):feat + brand:feat + brand:log(price) + EDUC + EDUC:log(price) + INCOME + HHLARGE + HHLARGE:log(price) + WORKWOM + store + week, data = oj)
+summary(lmImportant_Features_Demo2)
+```
+
+i) The coefficient for log(price):EDUC is 3.6285548 and the coefficient for log(price):HHLARGE is -5.1916795. 
+ii) We can see that once again, the sign for HHLARGE is negative and the sign for EDUC is positive. I think these signs make sense since we would expect more educated shoppers to be more price sensitive and larger households will probably not be as price sensitive.
+iii) The coefficient for EDUC is now -1.7073883 and the HHLARGE coefficient is now 0.9299622. Notably, the signs are flipped and the values are smaller from an absolute value.
+```{r}
+logmove_HH <- summary(oj$logmove)["Median"] + (coef(lmImportant_Features_Demo2)["log(price):HHLARGE"]) * (summary(oj$HHLARGE)["3rd Qu."] - summary(oj$HHLARGE)["Median"])
+logmove_HH
+log_HH_change <- logmove_HH - summary(oj$logmove)["Median"]
+log_HH_change
+
+logmove_EDUC <- summary(oj$logmove)["Median"] + (coef(lmImportant_Features_Demo2)["log(price):EDUC"]) * (summary(oj$EDUC)["3rd Qu."] - summary(oj$EDUC)["Median"])
+logmove_EDUC
+log_EDUC_change <- logmove_EDUC - summary(oj$logmove)["Median"]
+log_EDUC_change
+```
+
+iv) The log change for EDUC is 0.1995859 and the log change for HHLARGE -0.1243224. It looks like EDUC is more important to price sensitivity since it has a larger absolute value.
+
+Part d: When we include interaction terms with price, we are allowing for the possibility that the effect of these variables on demand is not constant across different prices. I think this can happen if different groups of consumers have different preferences or sensitivities to changes in price. This is why including interaction terms can flip the signs of the coefficients.
+
+```{r}
+DF1 <- oj
+DF1$week <- DF1$week + 1
+Df2 <- merge(oj, DF1, by=c("brand","store","week"))
+head(Df2)
+lm_this_week <- lm(logmove.y~log(price.y), data = Df2)
+summary(lm_this_week)
+lm_last_week <- lm(logmove.y~log(price.x), data = Df2)
+summary(lm_last_week)
+```
+
+We can see that the previous week's elasticity is negative. A negative elasticity means that an increase in price leads to a decrease in quantity demanded. Therefore, if the previous week’s elasticity is negative, then sales would be less attractive from a profit maximization perspective. This is because increasing prices would lead to a decrease in sales, which would reduce revenue and profits.
+
+```{r}
+# Create 5 partitions of the data of equal size
+partitions <- sample(1:5, nrow(Df2), replace = TRUE)
+
+# Create a list to store the training and test datasets
+training_datasets <- list()
+test_datasets <- split(Df2, sample(1:5, nrow(Df2), replace=T))
+
+# Loop over each partition and create a test dataset
+for (i in 1:5) {
+  # The corresponding training set is the other 80% of the dataframe that is not the test set
+  training_datasets[[i]] <- anti_join(Df2, test_datasets[[i]])
+}
+
+# Create a vector to store the MSEs for each fold
+mse <- numeric(5)
+
+# Loop over each fold and calculate the MSE
+for (i in 1:5) {
+  # Fit an OLS model on the training data for this fold
+  model <- lm(logmove.y ~log(price.y) + feat.y + brand + brand*log(price.y) + log(price.x) + EDUC.y:log(price.y) + HHLARGE.y:log(price.y) + AGE60.y + EDUC.y + ETHNIC.y + HHLARGE.y + WORKWOM.y + HVAL150.y + SSTRDIST.y + SSTRVOL.y + CPDIST5.y + CPWVOL5.y, data = training_datasets[[i]])
+
+  # Make predictions on the test data for this fold
+  predictions <- predict(model, newdata = test_datasets[[i]])
+
+  # Calculate the MSE for this fold
+  mse[i] <- mean((test_datasets[[i]]$logmove.y - predictions)^2)
+}
+
+# Calculate the average MSE across all folds
+mean_mse <- mean(mse)
+mean_mse
+```
+
+Theoretical Questions:
+1. a) To determine if bananas and orange juice are complements or substitutes, we can run a regression of the quantity demanded of bananas on the price of orange juice and other relevant variables. The coefficient of interest would be the cross-price elasticity of demand between bananas and orange juice. Then we can check the sign to see if they are complements or substitutes.
+
+b) If we find that bananas and orange juice are substitutes, the sign of the cross-price elasticity coefficient would be negative. If two goods are substitutes, an increase in the price of one good leads to an increase in the quantity demanded of the other good. 
+i. If we bundle these products, we would be less likely to offer them together if they are substitutes. This is because consumers would prefer to purchase only one of the goods at a lower price rather than both goods at a higher price.
+ii. The price of the bundle would depend on the prices of the individual goods and their cross-price elasticity. If the goods are substitutes, then the price of the bundle would be less than the sum of the two independent prices. This is because consumers would be willing to pay less for both goods together than for each good separately.
+
+c ) During a sale for orange juice, we should continue to offer the bundle if it is profitable to do so. Consumers who are price sensitive for orange juice may be more likely to purchase the bundle if it is offered at a lower price than before. However, if offering the bundle at a lower price reduces profit margin too much, it may not be worth it to continue offering it.
